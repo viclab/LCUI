@@ -28,52 +28,47 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
 #include <LCUI_Build.h>
 #include <LCUI/LCUI.h>
 #include <LCUI/gui/widget.h>
 #include <LCUI/gui/metrics.h>
 
 static struct LCUI_WidgetModule {
-	LCUI_Widget root;		/**< 根级部件 */
-	Dict *ids;			/**< 各种部件的ID索引 */
-	LCUI_Mutex mutex;		/**< 互斥锁 */
-	DictType dt_ids;		/**< 部件ID映射表的类型模板 */
-	DictType dt_attributes;		/**< 部件属性表的类型模板 */
+	LCUI_Widget root;       /**< 根级部件 */
+	LinkedList trash;	/**< 待删除的部件列表 */
 } LCUIWidget;
-
-#define StrList_Destroy freestrs
 
 static inline float ToBorderBoxWidth(LCUI_Widget w, float content_width)
 {
-	return content_width + w->padding.left + w->padding.right
-		+ w->computed_style.border.left.width
-		+ w->computed_style.border.right.width;
+	return content_width + w->padding.left + w->padding.right +
+	       w->computed_style.border.left.width +
+	       w->computed_style.border.right.width;
 }
 
 static inline float ToBorderBoxHeight(LCUI_Widget w, float content_height)
 {
-	return content_height + w->padding.top + w->padding.bottom
-		+ w->computed_style.border.top.width
-		+ w->computed_style.border.bottom.width;
+	return content_height + w->padding.top + w->padding.bottom +
+	       w->computed_style.border.top.width +
+	       w->computed_style.border.bottom.width;
 }
 
 static inline float ToContentBoxWidth(LCUI_Widget w, float width)
 {
-	return width - w->padding.left - w->padding.right
-		- w->computed_style.border.left.width
-		- w->computed_style.border.right.width;
+	return width - w->padding.left - w->padding.right -
+	       w->computed_style.border.left.width -
+	       w->computed_style.border.right.width;
 }
 
 static inline float ToContentBoxHeight(LCUI_Widget w, float height)
 {
-	return height - w->padding.top - w->padding.bottom
-		- w->computed_style.border.top.width
-		- w->computed_style.border.bottom.width;
+	return height - w->padding.top - w->padding.bottom -
+	       w->computed_style.border.top.width -
+	       w->computed_style.border.bottom.width;
 }
 
 LCUI_Widget LCUIWidget_GetRoot(void)
@@ -81,191 +76,30 @@ LCUI_Widget LCUIWidget_GetRoot(void)
 	return LCUIWidget.root;
 }
 
-/** 刷新部件的状态 */
-static void Widget_UpdateStatus(LCUI_Widget widget)
+size_t LCUIWidget_ClearTrash(void)
 {
-	LCUI_Widget child;
-	if (!widget->parent) {
+	size_t count;
+	LinkedListNode *node;
+
+	node = LCUIWidget.trash.head.next;
+	count = LCUIWidget.trash.length;
+	while (node) {
+		LinkedListNode *next = node->next;
+		LinkedList_Unlink(&LCUIWidget.trash, node);
+		Widget_ExecDestroy(node->data);
+		node = next;
+	}
+	return count;
+}
+
+static void Widget_AddToTrash(LCUI_Widget w)
+{
+	w->state = LCUI_WSTATE_DELETED;
+	if (Widget_Unlink(w) != 0) {
 		return;
 	}
-	if (widget->index == widget->parent->children.length - 1) {
-		Widget_AddStatus(widget, "last-child");
-		child = Widget_GetPrev(widget);
-		if (child) {
-			Widget_RemoveStatus(child, "last-child");
-		}
-	}
-	if (widget->index == 0) {
-		Widget_AddStatus(widget, "first-child");
-		child = Widget_GetNext(widget);
-		if (child) {
-			Widget_RemoveStatus(child, "first-child");
-		}
-	}
-}
-
-int Widget_Unlink(LCUI_Widget widget)
-{
-	LCUI_Widget child;
-	LCUI_WidgetEventRec ev = { 0 };
-	LinkedListNode *node, *snode;
-	if (!widget->parent) {
-		return -1;
-	}
-	node = &widget->node;
-	snode = &widget->node_show;
-	if (widget->index == widget->parent->children.length - 1) {
-		Widget_RemoveStatus(widget, "last-child");
-		child = Widget_GetPrev(widget);
-		if (child) {
-			Widget_AddStatus(child, "last-child");
-		}
-	}
-	if (widget->index == 0) {
-		Widget_RemoveStatus(widget, "first-child");
-		child = Widget_GetNext(widget);
-		if (child) {
-			Widget_AddStatus(child, "first-child");
-		}
-	}
-	/** 修改它后面的部件的 index 值 */
-	node = node->next;
-	while (node) {
-		child = node->data;
-		child->index -= 1;
-		node = node->next;
-	}
-	node = &widget->node;
-	ev.cancel_bubble = TRUE;
-	ev.type = LCUI_WEVENT_UNLINK;
-	Widget_PostEvent(widget, &ev, NULL, NULL);
-	LinkedList_Unlink(&widget->parent->children, node);
-	LinkedList_Unlink(&widget->parent->children_show, snode);
-	Widget_PostSurfaceEvent(widget, LCUI_WEVENT_UNLINK, TRUE);
-	widget->parent = NULL;
-	return 0;
-}
-
-int Widget_Append(LCUI_Widget parent, LCUI_Widget widget)
-{
-	LCUI_Widget child;
-	LCUI_WidgetEventRec ev = { 0 };
-	LinkedListNode *node, *snode;
-	if (!parent || !widget) {
-		return -1;
-	}
-	if (parent == widget) {
-		return -2;
-	}
-	Widget_Unlink(widget);
-	widget->parent = parent;
-	widget->state = LCUI_WSTATE_CREATED;
-	widget->index = parent->children.length;
-	node = &widget->node;
-	snode = &widget->node_show;
-	LinkedList_AppendNode(&parent->children, node);
-	LinkedList_AppendNode(&parent->children_show, snode);
-	/** 修改它后面的部件的 index 值 */
-	node = node->next;
-	while (node) {
-		child = node->data;
-		child->index += 1;
-		node = node->next;
-	}
-	ev.cancel_bubble = TRUE;
-	ev.type = LCUI_WEVENT_LINK;
-	Widget_UpdateStyle(widget, TRUE);
-	Widget_UpdateChildrenStyle(widget, TRUE);
-	Widget_PostEvent(widget, &ev, NULL, NULL);
-	Widget_PostSurfaceEvent(widget, LCUI_WEVENT_LINK, TRUE);
-	Widget_UpdateTaskStatus(widget);
-	Widget_UpdateStatus(widget);
-	Widget_UpdateLayout(parent);
-	return 0;
-}
-
-int Widget_Prepend(LCUI_Widget parent, LCUI_Widget widget)
-{
-	LCUI_Widget child;
-	LCUI_WidgetEventRec ev = { 0 };
-	LinkedListNode *node, *snode;
-	if (!parent || !widget) {
-		return -1;
-	}
-	if (parent == widget) {
-		return -2;
-	}
-	child = widget->parent;
-	Widget_Unlink(widget);
-	widget->index = 0;
-	widget->parent = parent;
-	widget->state = LCUI_WSTATE_CREATED;
-	node = &widget->node;
-	snode = &widget->node_show;
-	LinkedList_InsertNode(&parent->children, 0, node);
-	LinkedList_InsertNode(&parent->children_show, 0, snode);
-	/** 修改它后面的部件的 index 值 */
-	node = node->next;
-	while (node) {
-		child = node->data;
-		child->index += 1;
-		node = node->next;
-	}
-	ev.cancel_bubble = TRUE;
-	ev.type = LCUI_WEVENT_LINK;
-	Widget_PostEvent(widget, &ev, NULL, NULL);
-	Widget_PostSurfaceEvent(widget, LCUI_WEVENT_LINK, TRUE);
-	Widget_AddTaskForChildren(widget, LCUI_WTASK_REFRESH_STYLE);
-	Widget_UpdateTaskStatus(widget);
-	Widget_UpdateStatus(widget);
-	Widget_UpdateLayout(parent);
-	return 0;
-}
-
-int Widget_Unwrap(LCUI_Widget widget)
-{
-	int i;
-	LCUI_Widget child;
-	LinkedList *list, *list_show;
-	LinkedListNode *target, *node, *prev, *snode;
-
-	if (!widget->parent) {
-		return -1;
-	}
-	list = &widget->parent->children;
-	list_show = &widget->parent->children_show;
-	if (widget->children.length > 0) {
-		node = LinkedList_GetNode(&widget->children, 0);
-		Widget_RemoveStatus(node->data, "first-child");
-		node = LinkedList_GetNodeAtTail(&widget->children, 0);
-		Widget_RemoveStatus(node->data, "last-child");
-	}
-	node = &widget->node;
-	i = widget->children.length;
-	target = node->prev;
-	node = widget->children.tail.prev;
-	while (i-- > 0) {
-		prev = node->prev;
-		child = node->data;
-		snode = &child->node_show;
-		LinkedList_Unlink(&widget->children, node);
-		LinkedList_Unlink(&widget->children_show, snode);
-		child->parent = widget->parent;
-		LinkedList_Link(list, target, node);
-		LinkedList_AppendNode(list_show, snode);
-		Widget_AddTaskForChildren(child, LCUI_WTASK_REFRESH_STYLE);
-		Widget_UpdateTaskStatus(child);
-		node = prev;
-	}
-	if (widget->index == 0) {
-		Widget_AddStatus(target->next->data, "first-child");
-	}
-	if (widget->index == list->length - 1) {
-		node = LinkedList_GetNodeAtTail(list, 0);
-		Widget_AddStatus(node->data, "last-child");
-	}
-	Widget_Destroy(widget);
-	return 0;
+	LinkedList_AppendNode(&LCUIWidget.trash, &w->node);
+	Widget_PostSurfaceEvent(w, LCUI_WEVENT_UNLINK, TRUE);
 }
 
 /** 构造函数 */
@@ -318,63 +152,48 @@ LCUI_Widget LCUIWidget_New(const char *type)
 	return widget;
 }
 
-static void Widget_OnDestroy(void *arg)
+void Widget_ExecDestroy(LCUI_Widget w)
 {
-	Widget_ExecDestroy(arg);
-}
-
-void Widget_ExecDestroy(LCUI_Widget widget)
-{
-	LCUI_WidgetEventRec e = { LCUI_WEVENT_DESTROY, 0 };
-	Widget_TriggerEvent(widget, &e, NULL);
-	Widget_ReleaseMouseCapture(widget);
-	Widget_ReleaseTouchCapture(widget, -1);
-	Widget_StopEventPropagation(widget);
-	Widget_DestroyBackground(widget);
-	LCUIWidget_ClearEventTarget(widget);
-	/* 先释放显示列表，后销毁部件列表，因为部件在这两个链表中的节点是和它共用
-	 * 一块内存空间的，销毁部件列表会把部件释放掉，所以把这个操作放在后面 */
-	LinkedList_ClearData(&widget->children_show, NULL);
-	LinkedList_ClearData(&widget->children, Widget_OnDestroy);
-	Widget_ClearPrototype(widget);
-	Widget_SetId(widget, NULL);
-	StyleSheet_Delete(widget->inherited_style);
-	StyleSheet_Delete(widget->custom_style);
-	StyleSheet_Delete(widget->style);
-	if (widget->parent) {
-		Widget_UpdateLayout(widget->parent);
+	if (w->parent) {
+		Widget_UpdateLayout(w->parent);
+		Widget_Unlink(w);
 	}
-	if (widget->title) {
-		free(widget->title);
-		widget->title = NULL;
+	Widget_DestroyBackground(w);
+	Widget_DestroyEventTrigger(w);
+	Widget_DestroyChildren(w);
+	Widget_ClearPrototype(w);
+	if (w->title) {
+		free(w->title);
+		w->title = NULL;
 	}
-	widget->attributes ? Dict_Release(widget->attributes) : 0;
-	widget->classes ? StrList_Destroy(widget->classes) : 0;
-	widget->status ? StrList_Destroy(widget->status) : 0;
-	EventTrigger_Destroy(widget->trigger);
-	widget->trigger = NULL;
-	free(widget);
+	Widget_DestroyId(w);
+	Widget_DestroyStyleSheets(w);
+	Widget_DestroyAttributes(w);
+	Widget_DestroyClasses(w);
+	Widget_DestroyStatus(w);
+	free(w);
 }
 
 void Widget_Destroy(LCUI_Widget w)
 {
 	LCUI_Widget root = w;
+
+	assert(w->state != LCUI_WSTATE_DELETED);
 	while (root->parent) {
 		root = root->parent;
 	}
+	/* If this widget is not mounted in the root widget tree */
 	if (root != LCUIWidget.root) {
-		LCUI_WidgetEventRec e = { 0 };
-		e.type = LCUI_WEVENT_UNLINK;
 		w->state = LCUI_WSTATE_DELETED;
-		Widget_TriggerEvent(w, &e, NULL);
 		Widget_ExecDestroy(w);
 		return;
 	}
 	if (w->parent) {
 		LCUI_Widget child;
 		LinkedListNode *node;
-		node = &w->node;
-		node = node->next;
+
+		/* Update the index of the siblings behind it */
+		node = w->node.next;
 		while (node) {
 			child = node->data;
 			child->index -= 1;
@@ -406,45 +225,12 @@ void Widget_Empty(LCUI_Widget w)
 		Widget_InvalidateArea(w, NULL, SV_GRAPH_BOX);
 		Widget_AddTask(w, LCUI_WTASK_LAYOUT);
 	} else {
-		LinkedList_ClearData(&w->children_show, NULL);
-		LinkedList_ClearData(&w->children, Widget_OnDestroy);
+		Widget_DestroyChildren(w);
 	}
 }
 
-LCUI_Widget Widget_At(LCUI_Widget widget, int ix, int iy)
-{
-	float x, y;
-	LCUI_BOOL is_hit;
-	LinkedListNode *node;
-	LCUI_Widget target = widget, c = NULL;
-	if (!widget) {
-		return NULL;
-	}
-	x = 1.0f * ix;
-	y = 1.0f * iy;
-	do {
-		is_hit = FALSE;
-		for (LinkedList_Each(node, &target->children_show)) {
-			c = node->data;
-			if (!c->computed_style.visible) {
-				continue;
-			}
-			ix = iround(x);
-			iy = iround(y);
-			if (LCUIRect_HasPoint(&c->box.border, ix, iy)) {
-				target = c;
-				x -= c->box.padding.x;
-				y -= c->box.padding.y;
-				is_hit = TRUE;
-				break;
-			}
-		}
-	} while (is_hit);
-	return (target == widget) ? NULL:target;
-}
-
-void Widget_GetOffset(LCUI_Widget w, LCUI_Widget parent,
-		      float *offset_x, float *offset_y)
+void Widget_GetOffset(LCUI_Widget w, LCUI_Widget parent, float *offset_x,
+		      float *offset_y)
 {
 	float x = 0, y = 0;
 	while (w != parent) {
@@ -462,50 +248,6 @@ void Widget_GetOffset(LCUI_Widget w, LCUI_Widget parent,
 	*offset_y = y;
 }
 
-LCUI_Widget LCUIWidget_GetById(const char *id)
-{
-	LinkedList *list;
-	LCUI_Widget w = NULL;
-
-	if (!id) {
-		return NULL;
-	}
-	LCUIMutex_Lock(&LCUIWidget.mutex);
-	list = Dict_FetchValue(LCUIWidget.ids, id);
-	if (list) {
-		w = LinkedList_Get(list, 0);
-	}
-	LCUIMutex_Unlock(&LCUIWidget.mutex);
-	return w;
-}
-
-LCUI_Widget Widget_GetPrev(LCUI_Widget w)
-{
-	LinkedListNode *node = &w->node;
-	if (node->prev && node != w->parent->children.head.next) {
-		return node->prev->data;
-	}
-	return NULL;
-}
-
-LCUI_Widget Widget_GetNext(LCUI_Widget w)
-{
-	LinkedListNode *node = &w->node;
-	if (node->next) {
-		return node->next->data;
-	}
-	return NULL;
-}
-
-LCUI_Widget Widget_GetChild(LCUI_Widget w, size_t index)
-{
-	LinkedListNode *node = LinkedList_GetNode(&w->children, index);
-	if (node) {
-		return node->data;
-	}
-	return NULL;
-}
-
 int Widget_Top(LCUI_Widget w)
 {
 	return Widget_Append(LCUIWidget.root, w);
@@ -517,7 +259,7 @@ void Widget_SetTitleW(LCUI_Widget w, const wchar_t *title)
 	wchar_t *new_title, *old_title;
 
 	len = wcslen(title) + 1;
-	new_title = (wchar_t*)malloc(sizeof(wchar_t)*len);
+	new_title = (wchar_t *)malloc(sizeof(wchar_t) * len);
 	if (!new_title) {
 		return;
 	}
@@ -528,70 +270,6 @@ void Widget_SetTitleW(LCUI_Widget w, const wchar_t *title)
 		free(old_title);
 	}
 	Widget_AddTask(w, LCUI_WTASK_TITLE);
-}
-
-static int Widget_RemoveId(LCUI_Widget w)
-{
-	LinkedList *list;
-	LinkedListNode *node;
-
-	if (!w->id) {
-		return -1;
-	}
-	list = Dict_FetchValue(LCUIWidget.ids, w->id);
-	if (!list) {
-		return -2;
-	}
-	for (LinkedList_Each(node, list)) {
-		if (node->data == w) {
-			free(w->id);
-			w->id = NULL;
-			LinkedList_Unlink(list, node);
-			LinkedListNode_Delete(node);
-			return 0;
-		}
-	}
-	return -3;
-}
-
-int Widget_SetId(LCUI_Widget w, const char *idstr)
-{
-	LinkedList *list;
-	LCUIMutex_Lock(&LCUIWidget.mutex);
-	Widget_RemoveId(w);
-	if (!idstr) {
-		LCUIMutex_Unlock(&LCUIWidget.mutex);
-		return -1;
-	}
-	w->id = strdup2(idstr);
-	if (!w->id) {
-		goto error_exit;
-	}
-	list = Dict_FetchValue(LCUIWidget.ids, w->id);
-	if (!list) {
-		list = malloc(sizeof(LinkedList));
-		if (!list) {
-			goto error_exit;
-		}
-		LinkedList_Init(list);
-		if (Dict_Add(LCUIWidget.ids, w->id, list) != 0) {
-			free(list);
-			goto error_exit;
-		}
-	}
-	if (!LinkedList_Append(list, w)) {
-		goto error_exit;
-	}
-	LCUIMutex_Unlock(&LCUIWidget.mutex);
-	return 0;
-
-error_exit:
-	LCUIMutex_Unlock(&LCUIWidget.mutex);
-	if (w->id) {
-		free(w->id);
-		w->id = NULL;
-	}
-	return -2;
 }
 
 void Widget_AddState(LCUI_Widget w, LCUI_WidgetState state)
@@ -653,12 +331,14 @@ static int ComputeStyleOption(LCUI_Widget w, int key, int default_value)
 
 void Widget_UpdateVisibility(LCUI_Widget w)
 {
-	LCUI_Style s = &w->style->sheet[key_visible];
+	LCUI_Style s = &w->style->sheet[key_visibility];
 	LCUI_BOOL visible = w->computed_style.visible;
+
 	if (w->computed_style.display == SV_NONE) {
 		w->computed_style.visible = FALSE;
-	} else if (s->is_valid && s->type == LCUI_STYPE_BOOL) {
-		w->computed_style.visible = s->val_bool;
+	} else if (s->is_valid && s->type == LCUI_STYPE_STRING &&
+		   strcmp(s->val_string, "hidden") == 0) {
+		w->computed_style.visible = FALSE;
 	} else {
 		w->computed_style.visible = TRUE;
 	}
@@ -682,17 +362,13 @@ void Widget_UpdateDisplay(LCUI_Widget w)
 	LCUI_Style s = &w->style->sheet[key_display];
 	if (s->is_valid && s->type == LCUI_STYPE_STYLE) {
 		w->computed_style.display = s->style;
-		if (w->computed_style.display == SV_NONE) {
-			w->computed_style.visible = FALSE;
-		}
 	} else {
 		w->computed_style.display = SV_BLOCK;
 	}
 	if (w->computed_style.display == display) {
 		return;
 	}
-	if (w->parent && display == SV_NONE &&
-	    w->computed_style.position != SV_ABSOLUTE) {
+	if (w->parent && w->computed_style.position != SV_ABSOLUTE) {
 		Widget_UpdateLayout(w->parent);
 	}
 	Widget_UpdateVisibility(w);
@@ -705,9 +381,15 @@ void Widget_UpdateOpacity(LCUI_Widget w)
 	LCUI_Style s = &w->style->sheet[key_opacity];
 	if (s->is_valid) {
 		switch (s->type) {
-		case LCUI_STYPE_VALUE: opacity = 1.0f * s->value; break;
-		case LCUI_STYPE_SCALE: opacity = s->val_scale; break;
-		default: opacity = 1.0f; break;
+		case LCUI_STYPE_VALUE:
+			opacity = 1.0f * s->value;
+			break;
+		case LCUI_STYPE_SCALE:
+			opacity = s->val_scale;
+			break;
+		default:
+			opacity = 1.0f;
+			break;
 		}
 		if (opacity > 1.0) {
 			opacity = 1.0;
@@ -848,18 +530,18 @@ void Widget_UpdatePosition(LCUI_Widget w)
 	switch (position) {
 	case SV_ABSOLUTE:
 		w->x = w->y = 0;
-		if (Widget_CheckStyleValid(w, key_left)) {
+		if (!Widget_HasAutoStyle(w, key_left)) {
 			w->x = w->computed_style.left;
-		} else if (Widget_CheckStyleValid(w, key_right)) {
+		} else if (!Widget_HasAutoStyle(w, key_right)) {
 			if (w->parent) {
 				w->x = w->parent->box.border.width;
 				w->x -= w->width;
 			}
 			w->x -= w->computed_style.right;
 		}
-		if (Widget_CheckStyleValid(w, key_top)) {
+		if (!Widget_HasAutoStyle(w, key_top)) {
 			w->y = w->computed_style.top;
-		} else if (Widget_CheckStyleValid(w, key_bottom)) {
+		} else if (!Widget_HasAutoStyle(w, key_bottom)) {
 			if (w->parent) {
 				w->y = w->parent->box.border.height;
 				w->y -= w->height;
@@ -868,14 +550,14 @@ void Widget_UpdatePosition(LCUI_Widget w)
 		}
 		break;
 	case SV_RELATIVE:
-		if (Widget_CheckStyleValid(w, key_left)) {
+		if (!Widget_HasAutoStyle(w, key_left)) {
 			w->x += w->computed_style.left;
-		} else if (Widget_CheckStyleValid(w, key_right)) {
+		} else if (!Widget_HasAutoStyle(w, key_right)) {
 			w->x -= w->computed_style.right;
 		}
-		if (Widget_CheckStyleValid(w, key_top)) {
+		if (!Widget_HasAutoStyle(w, key_top)) {
 			w->y += w->computed_style.top;
-		} else if (Widget_CheckStyleValid(w, key_bottom)) {
+		} else if (!Widget_HasAutoStyle(w, key_bottom)) {
 			w->y -= w->computed_style.bottom;
 		}
 	default:
@@ -898,7 +580,8 @@ void Widget_UpdatePosition(LCUI_Widget w)
 		}
 		w->y += w->parent->box.content.height - w->height;
 	case SV_TOP:
-	default: break;
+	default:
+		break;
 	}
 	w->box.outer.x = w->x;
 	w->box.outer.y = w->y;
@@ -936,8 +619,8 @@ static void Widget_UpdateCanvasBox(LCUI_Widget w)
 	rg->height = Widget_GetCanvasHeight(w);
 }
 
-static LCUI_BOOL Widget_ComputeStaticSize(LCUI_Widget w,
-					  float *width, float *height)
+static LCUI_BOOL Widget_ComputeStaticSize(LCUI_Widget w, float *width,
+					  float *height)
 {
 	LCUI_WidgetBoxModelRec *box = &w->box;
 	LCUI_WidgetStyle *style = &w->computed_style;
@@ -983,23 +666,21 @@ static LCUI_BOOL Widget_ComputeStaticSize(LCUI_Widget w,
 	return TRUE;
 }
 
-static void Widget_ComputeStaticContentSize(LCUI_Widget w,
-					    float *out_width,
+static void Widget_ComputeStaticContentSize(LCUI_Widget w, float *out_width,
 					    float *out_height)
 {
 	LinkedListNode *node;
 	float content_width = 0, content_height = 0, width, height;
 
 	for (LinkedList_Each(node, &w->children_show)) {
-		if (!Widget_ComputeStaticSize(node->data,
-					      &width, &height)) {
+		if (!Widget_ComputeStaticSize(node->data, &width, &height)) {
 			continue;
 		}
 		content_width = max(content_width, width);
 		content_height = max(content_height, height);
 	}
 	/* The child widget's coordinates are relative to the padding box,
-	 * not the content_box, so it needs to be converted */
+	 * not the content box, so it needs to be converted */
 	content_width -= w->padding.left;
 	content_height -= w->padding.top;
 	if (out_width && *out_width <= 0) {
@@ -1013,7 +694,7 @@ static void Widget_ComputeStaticContentSize(LCUI_Widget w,
 LCUI_BOOL Widget_HasAutoStyle(LCUI_Widget w, int key)
 {
 	return !Widget_CheckStyleValid(w, key) ||
-		Widget_CheckStyleType(w, key, AUTO);
+	       Widget_CheckStyleType(w, key, AUTO);
 }
 
 LCUI_BOOL Widget_HasStaticWidthParent(LCUI_Widget widget)
@@ -1042,8 +723,7 @@ LCUI_BOOL Widget_HasFitContentWidth(LCUI_Widget w)
 	if (Widget_HasInlineBlockDisplay(w)) {
 		return TRUE;
 	}
-	if (Widget_HasAbsolutePosition(w) ||
-	    !Widget_HasStaticWidthParent(w)) {
+	if (Widget_HasAbsolutePosition(w) || !Widget_HasStaticWidthParent(w)) {
 		return TRUE;
 	}
 	return FALSE;
@@ -1192,8 +872,7 @@ void Widget_ComputeContentSize(LCUI_Widget w, float *width, float *height)
 			content_width = ToContentBoxWidth(w, content_width);
 		}
 		if (w->proto && w->proto->autosize) {
-			w->proto->autosize(w, &content_width,
-					   &content_height);
+			w->proto->autosize(w, &content_width, &content_height);
 		}
 	} else {
 		if (w->computed_style.box_sizing == SV_BORDER_BOX) {
@@ -1214,6 +893,12 @@ done:
 void Widget_AutoSize(LCUI_Widget w)
 {
 	float width = 0, height = 0;
+	if (!Widget_CheckStyleType(w, key_width, scale)) {
+		width = ComputeXMetric(w, key_width);
+	}
+	if (!Widget_CheckStyleType(w, key_height, scale)) {
+		height = ComputeYMetric(w, key_height);
+	}
 	Widget_ComputeContentSize(w, &width, &height);
 	width = Widget_GetAdjustedWidth(w, width);
 	Widget_SetSize(w, ToBorderBoxWidth(w, width),
@@ -1222,7 +907,8 @@ void Widget_AutoSize(LCUI_Widget w)
 
 static void Widget_ComputeSize(LCUI_Widget w)
 {
-	float width, height, max_width = -1;
+	float width, height;
+	float max_width = -1, default_width = -1;
 
 	Widget_ComputeLimitSize(w);
 	width = ComputeXMetric(w, key_width);
@@ -1246,18 +932,23 @@ static void Widget_ComputeSize(LCUI_Widget w)
 		width = ToContentBoxWidth(w, width);
 		height = ToContentBoxHeight(w, height);
 	}
-	if (Widget_HasAutoStyle(w, key_width)) {
-		if (Widget_HasFillAvailableWidth(w)) {
-			width = Widget_ComputeFillAvailableWidth(w);
-			width = ToContentBoxWidth(w, width);
-			if (!Widget_HasStaticWidthParent(w)) {
-				max_width = width;
-				width = 0;
+	if (Widget_HasAutoStyle(w, key_width) &&
+	    Widget_HasFillAvailableWidth(w)) {
+		width = Widget_ComputeFillAvailableWidth(w);
+		width = ToContentBoxWidth(w, width);
+		if (!Widget_HasStaticWidthParent(w)) {
+			default_width = w->parent->box.content.width;
+			if (w->computed_style.box_sizing == SV_BORDER_BOX) {
+				default_width =
+				    ToContentBoxWidth(w, default_width);
 			}
+			max_width = width;
+			width = 0;
 		}
-		Widget_ComputeContentSize(w, &width, &height);
-	} else {
-		Widget_ComputeContentSize(w, &width, &height);
+	}
+	Widget_ComputeContentSize(w, &width, &height);
+	if (default_width != -1 && width < default_width) {
+		width = default_width;
 	}
 	if (max_width != -1 && width > max_width) {
 		width = max_width;
@@ -1289,12 +980,10 @@ void Widget_UpdateMargin(LCUI_Widget w)
 		LCUI_Style sval;
 		float *fval;
 		int key;
-	} pd_map[4] = {
-		{ &mbox->top, &w->margin.top, key_margin_top },
-		{ &mbox->right, &w->margin.right, key_margin_right },
-		{ &mbox->bottom, &w->margin.bottom, key_margin_bottom },
-		{ &mbox->left, &w->margin.left, key_margin_left }
-	};
+	} pd_map[4] = { { &mbox->top, &w->margin.top, key_margin_top },
+			{ &mbox->right, &w->margin.right, key_margin_right },
+			{ &mbox->bottom, &w->margin.bottom, key_margin_bottom },
+			{ &mbox->left, &w->margin.left, key_margin_left } };
 	for (i = 0; i < 4; ++i) {
 		LCUI_Style s = &w->style->sheet[pd_map[i].key];
 		if (!s->is_valid) {
@@ -1344,23 +1033,19 @@ void Widget_UpdateMargin(LCUI_Widget w)
 	Widget_AddTask(w, LCUI_WTASK_POSITION);
 }
 
-void Widget_UpdateSize(LCUI_Widget w)
+void Widget_ComputePadding(LCUI_Widget w)
 {
-	LCUI_RectF rect;
-	int i, box_sizing;
-	LCUI_Rect2F padding = w->padding;
+	int i;
 	LCUI_BoundBox *pbox = &w->computed_style.padding;
 	struct {
 		LCUI_Style sval;
 		float *ival;
 		int key;
-	} pd_map[4] = {
-		{ &pbox->top, &w->padding.top, key_padding_top },
-		{ &pbox->right, &w->padding.right, key_padding_right },
-		{ &pbox->bottom, &w->padding.bottom, key_padding_bottom },
-		{ &pbox->left, &w->padding.left, key_padding_left }
-	};
-	rect = w->box.canvas;
+	} pd_map[4] = { { &pbox->top, &w->padding.top, key_padding_top },
+			{ &pbox->right, &w->padding.right, key_padding_right },
+			{ &pbox->bottom, &w->padding.bottom,
+			  key_padding_bottom },
+			{ &pbox->left, &w->padding.left, key_padding_left } };
 	/* 内边距的单位暂时都用 px  */
 	for (i = 0; i < 4; ++i) {
 		LCUI_Style s = &w->style->sheet[pd_map[i].key];
@@ -1373,8 +1058,17 @@ void Widget_UpdateSize(LCUI_Widget w)
 		*pd_map[i].sval = *s;
 		*pd_map[i].ival = LCUIMetrics_Compute(s->value, s->type);
 	}
+}
+
+void Widget_UpdateSize(LCUI_Widget w)
+{
+	int box_sizing;
+	LCUI_RectF rect = w->box.canvas;
+	LCUI_Rect2F padding = w->padding;
+
 	box_sizing = ComputeStyleOption(w, key_box_sizing, SV_CONTENT_BOX);
 	w->computed_style.box_sizing = box_sizing;
+	Widget_ComputePadding(w);
 	Widget_ComputeSize(w);
 	/* 如果左右外间距是 auto 类型的，则需要计算外间距 */
 	if (w->style->sheet[key_margin_left].is_valid &&
@@ -1391,12 +1085,11 @@ void Widget_UpdateSize(LCUI_Widget w)
 	    padding.right == w->padding.right &&
 	    padding.bottom == w->padding.bottom &&
 	    padding.left == w->padding.left) {
-		DEBUG_MSG("[%d] %s, size not change\n", w->index, w->id);
 		return;
 	}
 	/* 若在变化前后的宽高中至少有一个为 0，则不继续处理 */
 	if ((w->box.canvas.width <= 0 || w->box.canvas.height <= 0) &&
-		(rect.width <= 0 || rect.height <= 0)) {
+	    (rect.width <= 0 || rect.height <= 0)) {
 		return;
 	}
 	Widget_UpdateLayout(w);
@@ -1453,141 +1146,6 @@ void Widget_UpdateProps(LCUI_Widget w)
 	}
 }
 
-int Widget_SetAttributeEx(LCUI_Widget w, const char *name, void *value,
-			  int value_type, void(*value_destructor)(void*))
-{
-	LCUI_WidgetAttribute attr;
-	if (!w->attributes) {
-		w->attributes = Dict_Create(&LCUIWidget.dt_attributes, NULL);
-	}
-	attr = Dict_FetchValue(w->attributes, name);
-	if (attr) {
-		if (attr->value.destructor) {
-			attr->value.destructor(attr->value.data);
-		}
-	} else {
-		attr = NEW(LCUI_WidgetAttributeRec, 1);
-		attr->name = strdup2(name);
-		Dict_Add(w->attributes, attr->name, attr);
-	}
-	attr->value.data = value;
-	attr->value.type = value_type;
-	attr->value.destructor = value_destructor;
-	return 0;
-}
-
-int Widget_SetAttribute(LCUI_Widget w, const char *name, const char *value)
-{
-	char *value_str;
-	if (strcmp(name, "disabled") == 0) {
-		if (!value || strcmp(value, "false") != 0) {
-			Widget_SetDisabled(w, TRUE);
-		} else {
-			Widget_SetDisabled(w, FALSE);
-		}
-		return 0;
-	}
-	if (!value) {
-		return Widget_SetAttributeEx(w, name, NULL, LCUI_STYPE_NONE, NULL);
-	}
-	value_str = strdup2(value);
-	if (!value_str) {
-		return -ENOMEM;
-	}
-	return Widget_SetAttributeEx(w, name, value_str, LCUI_STYPE_STRING, free);
-}
-
-const char *Widget_GetAttribute(LCUI_Widget w, const char *name)
-{
-	LCUI_WidgetAttribute attr;
-	if (!w->attributes) {
-		return NULL;
-	}
-	attr = Dict_FetchValue(w->attributes, name);
-	if (attr) {
-		return attr->value.string;
-	}
-	return NULL;
-}
-
-LCUI_BOOL Widget_CheckPrototype(LCUI_Widget w, LCUI_WidgetPrototypeC proto)
-{
-	LCUI_WidgetPrototypeC p;
-	for (p = w->proto; p; p = p->proto) {
-		if (p == proto) {
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
-/** 为部件添加一个类 */
-int Widget_AddClass(LCUI_Widget w, const char *class_name)
-{
-	if (strshas(w->classes, class_name)) {
-		return 1;
-	}
-	if (strsadd(&w->classes, class_name) <= 0) {
-		return 0;
-	}
-	Widget_HandleChildrenStyleChange(w, 0, class_name);
-	Widget_UpdateStyle(w, TRUE);
-	return 1;
-}
-
-/** 判断部件是否包含指定的类 */
-LCUI_BOOL Widget_HasClass(LCUI_Widget w, const char *class_name)
-{
-	if (strshas(w->classes, class_name)) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-/** 从部件中移除一个类 */
-int Widget_RemoveClass(LCUI_Widget w, const char *class_name)
-{
-	if (strshas(w->classes, class_name)) {
-		Widget_HandleChildrenStyleChange(w, 0, class_name);
-		strsdel(&w->classes, class_name);
-		Widget_UpdateStyle(w, TRUE);
-		return 1;
-	}
-	return 0;
-}
-
-int Widget_AddStatus(LCUI_Widget w, const char *status_name)
-{
-	if (strshas(w->status, status_name)) {
-		return 0;
-	}
-	if (strsadd(&w->status, status_name) <= 0) {
-		return 0;
-	}
-	Widget_HandleChildrenStyleChange(w, 1, status_name);
-	Widget_UpdateStyle(w, TRUE);
-	return 1;
-}
-
-LCUI_BOOL Widget_HasStatus(LCUI_Widget w, const char *status_name)
-{
-	if (strshas(w->status, status_name)) {
-		return TRUE;
-	}
-	return FALSE;
-}
-
-int Widget_RemoveStatus(LCUI_Widget w, const char *status_name)
-{
-	if (strshas(w->status, status_name)) {
-		Widget_HandleChildrenStyleChange(w, 1, status_name);
-		strsdel(&w->status, status_name);
-		Widget_UpdateStyle(w, TRUE);
-		return 1;
-	}
-	return 0;
-}
-
 float Widget_ComputeMaxAvaliableWidth(LCUI_Widget widget)
 {
 	LCUI_Widget w;
@@ -1634,85 +1192,10 @@ float Widget_ComputeMaxContentWidth(LCUI_Widget w)
 	return ToContentBoxWidth(w, width);
 }
 
-static void _LCUIWidget_PrintTree(LCUI_Widget w, int depth, const char *prefix)
-{
-	int len;
-	LCUI_Widget child;
-	LinkedListNode *node;
-	LCUI_SelectorNode snode;
-	char str[16], child_prefix[512];
-
-	len = strlen(prefix);
-	strcpy(child_prefix, prefix);
-	for (LinkedList_Each(node, &w->children)) {
-		if (node == w->children.tail.prev) {
-			strcpy(str, "└");
-			strcpy(&child_prefix[len], "    ");
-		} else {
-			strcpy(str, "├");
-			strcpy(&child_prefix[len], "│  ");
-		}
-		strcat(str, "─");
-		child = node->data;
-		if (child->children.length == 0) {
-			strcat(str, "─");
-		} else {
-			strcat(str, "┬");
-		}
-		snode = Widget_GetSelectorNode(child);
-		LOG("%s%s %s, xy:(%g,%g), size:(%g,%g), "
-		    "visible: %s, padding: (%g,%g,%g,%g), margin: (%g,%g,%g,%g)\n",
-		    prefix, str, snode->fullname, child->x, child->y,
-		    child->width, child->height,
-		    child->computed_style.visible ? "true" : "false",
-		    child->padding.top, child->padding.right, child->padding.bottom,
-		    child->padding.left, child->margin.top, child->margin.right,
-		    child->margin.bottom, child->margin.left);
-		SelectorNode_Delete(snode);
-		_LCUIWidget_PrintTree(child, depth + 1, child_prefix);
-	}
-}
-
-void Widget_PrintTree(LCUI_Widget w)
-{
-	LCUI_SelectorNode node;
-	w = w ? w : LCUIWidget.root;
-	node = Widget_GetSelectorNode(w);
-	LOG("%s, xy:(%g,%g), size:(%g,%g), visible: %s\n",
-	    node->fullname, w->x, w->y, w->width, w->height,
-	    w->computed_style.visible ? "true" : "false");
-	SelectorNode_Delete(node);
-	_LCUIWidget_PrintTree(w, 0, "  ");
-}
-
-static void OnClearWidgetAttribute(void *privdata, void *data)
-{
-	LCUI_WidgetAttribute attr = data;
-	if (attr->value.destructor) {
-		attr->value.destructor(attr->value.data);
-	}
-	free(attr->name);
-	attr->name = NULL;
-	attr->value.data = NULL;
-	free(attr);
-}
-
-static void OnClearWidgetList(void *privdata, void *data)
-{
-	LinkedList *list = data;
-	LinkedList_Clear(list, NULL);
-	free(list);
-}
-
 void LCUIWidget_InitBase(void)
 {
-	LCUIMutex_Init(&LCUIWidget.mutex);
+	LinkedList_Init(&LCUIWidget.trash);
 	LCUIWidget.root = LCUIWidget_New("root");
-	LCUIWidget.dt_ids = DictType_StringCopyKey;
-	LCUIWidget.dt_ids.valDestructor = OnClearWidgetList;
-	LCUIWidget.dt_attributes = DictType_StringCopyKey;
-	LCUIWidget.dt_attributes.valDestructor = OnClearWidgetAttribute;
-	LCUIWidget.ids = Dict_Create(&LCUIWidget.dt_ids, NULL);
 	Widget_SetTitleW(LCUIWidget.root, L"LCUI Display");
 }
 
@@ -1723,8 +1206,5 @@ void LCUIWidget_FreeRoot(void)
 
 void LCUIWidget_FreeBase(void)
 {
-	Dict_Release(LCUIWidget.ids);
-	LCUIMutex_Destroy(&LCUIWidget.mutex);
-	LCUIWidget.ids = NULL;
 	LCUIWidget.root = NULL;
 }

@@ -35,6 +35,8 @@
 
 LCUI_BEGIN_HEADER
 
+/* clang-format off */
+
 /** 部件样式 */
 typedef struct LCUI_WidgetStyle {
 	LCUI_BOOL visible;			/**< 是否可见 */
@@ -200,6 +202,8 @@ typedef struct LCUI_WidgetRec_ {
 	LinkedListNode		node_show;		/**< 在部件显示链表中的结点 */
 } LCUI_WidgetRec;
 
+/* clang-format on */
+
 #define Widget_SetStyle(W, K, V, T) SetStyle((W)->custom_style, K, V, T)
 #define Widget_UnsetStyle(W, K) UnsetStyle((W)->custom_style, K)
 #define Widget_CheckStyleType(W, K, T) CheckStyleType((W)->style, K, T)
@@ -207,28 +211,26 @@ typedef struct LCUI_WidgetRec_ {
 #define Widget_CheckStyleValid(W, K) W->style->sheet[K].is_valid
 
 #define Widget_HasAbsolutePosition(W) \
-((W)->computed_style.position == SV_ABSOLUTE)
+	((W)->computed_style.position == SV_ABSOLUTE)
 
-#define Widget_HasBlockDisplay(W) \
-((W)->computed_style.display == SV_BLOCK)
+#define Widget_HasBlockDisplay(W) ((W)->computed_style.display == SV_BLOCK)
 
-#define Widget_HasFlexDisplay(W) \
-((W)->computed_style.display == SV_FLEX)
+#define Widget_HasFlexDisplay(W) ((W)->computed_style.display == SV_FLEX)
 
 #define Widget_HasInlineBlockDisplay(W) \
-((W)->computed_style.display == SV_INLINE_BLOCK)
+	((W)->computed_style.display == SV_INLINE_BLOCK)
 
-#define Widget_HasFillAvailableWidth(W) \
-((Widget_HasBlockDisplay( W ) || Widget_HasFlexDisplay( W )) && \
-!Widget_HasAbsolutePosition( W ))
+#define Widget_HasFillAvailableWidth(W)                             \
+	((Widget_HasBlockDisplay(W) || Widget_HasFlexDisplay(W)) && \
+	 !Widget_HasAbsolutePosition(W))
 
-#define Widget_HasScaleSize(W) \
-(Widget_CheckStyleType( W, key_width, SCALE ) ||\
-Widget_CheckStyleType( W, key_height, SCALE ))
+#define Widget_HasScaleSize(W)                         \
+	(Widget_CheckStyleType(W, key_width, SCALE) || \
+	 Widget_CheckStyleType(W, key_height, SCALE))
 
-#define Widget_HasParentDependentWidth(W) \
-	(Widget_CheckStyleType( W, key_width, scale ) &&\
-	!Widget_HasStaticWidthParent( W ))
+#define Widget_HasParentDependentWidth(W)              \
+	(Widget_CheckStyleType(W, key_width, scale) && \
+	 !Widget_HasStaticWidthParent(W))
 
 /** 部件是否有值为自动（默认）的样式 */
 LCUI_API LCUI_BOOL Widget_HasAutoStyle(LCUI_Widget w, int key);
@@ -253,33 +255,6 @@ LCUI_API void Widget_ExecDestroy(LCUI_Widget w);
 
 /** 销毁部件 */
 LCUI_API void Widget_Destroy(LCUI_Widget w);
-
-/** 将部件与子部件列表断开链接 */
-LCUI_API int Widget_Unlink(LCUI_Widget widget);
-
-/** 向子部件列表追加部件 */
-LCUI_API int Widget_Append(LCUI_Widget container, LCUI_Widget widget);
-
-/** 将部件插入到子部件列表的开头处 */
-LCUI_API int Widget_Prepend(LCUI_Widget parent, LCUI_Widget widget);
-
-/** 移除部件，并将其子级部件转移至父部件内 */
-LCUI_API int Widget_Unwrap(LCUI_Widget widget);
-
-/** 清空部件内的子级部件 */
-LCUI_API void Widget_Empty(LCUI_Widget widget);
-
-/** 获取上一个部件 */
-LCUI_API LCUI_Widget Widget_GetPrev(LCUI_Widget w);
-
-/** 获取下一个部件 */
-LCUI_API LCUI_Widget Widget_GetNext(LCUI_Widget w);
-
-/** 获取一个子部件 */
-LCUI_API LCUI_Widget Widget_GetChild(LCUI_Widget w, size_t index);
-
-/** 获取当前点命中的最上层可见部件 */
-LCUI_API LCUI_Widget Widget_At(LCUI_Widget widget, int x, int y);
 
 /** 获取相对于父级指定部件的 XY 坐标 */
 LCUI_API void Widget_GetOffset(LCUI_Widget w, LCUI_Widget parent,
@@ -384,45 +359,8 @@ LCUI_API void Widget_UpdateOpacity(LCUI_Widget w);
 /** 设置部件标题 */
 LCUI_API void Widget_SetTitleW(LCUI_Widget w, const wchar_t *title);
 
-/** 设置部件ID */
-LCUI_API int Widget_SetId(LCUI_Widget w, const char *idstr);
-
 /** 为部件添加状态 */
 LCUI_API void Widget_AddState(LCUI_Widget w, LCUI_WidgetState state);
-
-/** 为部件设置属性 */
-LCUI_API int Widget_SetAttributeEx(LCUI_Widget w, const char *name, void *value,
-				   int value_type, void(*value_destructor)(void*));
-
-/** 为部件设置属性（字符串版） */
-LCUI_API int Widget_SetAttribute(LCUI_Widget w, const char *name, const char *value);
-
-/** 获取部件属性 */
-LCUI_API const char *Widget_GetAttribute(LCUI_Widget w, const char *name);
-
-/** 判断部件类型 */
-LCUI_API LCUI_BOOL Widget_CheckType(LCUI_Widget w, const char *type);
-
-/** 判断部件原型 */
-LCUI_API LCUI_BOOL Widget_CheckPrototype(LCUI_Widget w, LCUI_WidgetPrototypeC proto);
-
-/** 为部件添加一个类 */
-LCUI_API int Widget_AddClass(LCUI_Widget w, const char *class_name);
-
-/** 判断部件是否包含指定的类 */
-LCUI_API LCUI_BOOL Widget_HasClass(LCUI_Widget w, const char *class_name);
-
-/** 从部件中移除一个类 */
-LCUI_API int Widget_RemoveClass(LCUI_Widget w, const char *class_name);
-
-/** 为部件添加一个状态 */
-LCUI_API int Widget_AddStatus(LCUI_Widget w, const char *status_name);
-
-/** 判断部件是否包含指定的状态 */
-LCUI_API LCUI_BOOL Widget_HasStatus(LCUI_Widget w, const char *status_name);
-
-/** 设置部件是否禁用 */
-LCUI_API void Widget_SetDisabled(LCUI_Widget w, LCUI_BOOL disabled);
 
 /** 计算部件的最大宽度 */
 LCUI_API float Widget_ComputeMaxWidth(LCUI_Widget w);
@@ -438,11 +376,7 @@ LCUI_API float Widget_ComputeMaxAvaliableWidth(LCUI_Widget widget);
 
 LCUI_API void Widget_ComputeLimitSize(LCUI_Widget w);
 
-/** 从部件中移除一个状态 */
-LCUI_API int Widget_RemoveStatus(LCUI_Widget w, const char *status_name);
-
-/** 打印部件树 */
-LCUI_API void Widget_PrintTree(LCUI_Widget w);
+LCUI_API size_t LCUIWidget_ClearTrash(void);
 
 LCUI_API void LCUIWidget_InitBase(void);
 

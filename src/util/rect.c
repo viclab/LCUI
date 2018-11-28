@@ -330,11 +330,10 @@ int RectList_Add(LinkedList *list, LCUI_Rect *rect)
 			node = prev;
 			continue;
 		}
-		/* 如果与现有的矩形不重叠 */
+		/* If it does not overlap with an existing rectangle */
 		if (!LCUIRect_GetOverlayRect(rect, added_rect, &union_rect)) {
 			continue;
 		}
-		/* 直接合并 */
 		LCUIRect_MergeRect(&union_rect, added_rect, rect);
 		free(node->data);
 		LinkedList_DeleteNode(list, node);

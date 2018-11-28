@@ -34,7 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <LCUI_Build.h>
-#include <LCUI/LCUI.h>
+#include <LCUI/types.h>
+#include <LCUI/util.h>
 #include <LCUI/thread.h>
 #include <LCUI/gui/css_library.h>
 #include <LCUI/gui/css_parser.h>
@@ -113,7 +114,7 @@ typedef struct KeyNameGroupRec_ {
 } KeyNameGroupRec, *KeyNameGroup;
 
 static KeyNameGroupRec style_name_map[] = {
-	{ key_visible, "visible" },
+	{ key_visibility, "visibility" },
 	{ key_width, "width" },
 	{ key_height, "height" },
 	{ key_min_width, "min-width" },
@@ -1285,6 +1286,9 @@ void LCUI_PrintStyleSheet(LCUI_StyleSheet ss)
 			break;
 		case LCUI_STYPE_STRING:
 			LOG("%s", s->val_string);
+			break;
+		case LCUI_STYPE_WSTRING:
+			LOG("%S", s->val_wstring);
 			break;
 		case LCUI_STYPE_SCALE:
 			LOG("%g%%", s->val_scale * 100);

@@ -28,7 +28,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <assert.h>
 #include <string.h>
+#include <stdlib.h>
 #include <LCUI_Build.h>
 #include <LCUI/LCUI.h>
 #include <LCUI/gui/widget.h>
@@ -100,15 +102,61 @@ void Widget_ResizeWithSurface(LCUI_Widget w, float width, float height)
 	Widget_AddTask(w, LCUI_WTASK_RESIZE_WITH_SURFACE);
 }
 
+LCUI_Style Widget_GetStyle(LCUI_Widget w, int key)
+{
+	assert(key >= 0 && key < w->custom_style->length);
+	return &w->custom_style->sheet[key];
+}
+
+LCUI_Style Widget_GetInheritedStyle(LCUI_Widget w, int key)
+{
+	assert(key >= 0 && key < w->inherited_style->length);
+	return &w->inherited_style->sheet[key];
+}
+
+void Widget_SetVisibility(LCUI_Widget w, const char *value)
+{
+	LCUI_Style s = Widget_GetStyle(w, key_visibility);
+	if (s->is_valid && s->type == LCUI_STYPE_STRING) {
+		free(s->val_string);
+		s->val_string = NULL;
+	}
+	Widget_SetStyle(w, key_visibility, strdup2(value), string);
+	Widget_UpdateStyle(w, FALSE);
+}
+
+void Widget_SetVisible(LCUI_Widget w)
+{
+	Widget_SetVisibility(w, "visible");
+}
+
+void Widget_SetHidden(LCUI_Widget w)
+{
+	Widget_SetVisibility(w, "hidden");
+}
+
 void Widget_Show(LCUI_Widget w)
 {
-	Widget_SetStyle(w, key_visible, TRUE, bool);
+	LCUI_Style s = Widget_GetStyle(w, key_display);
+
+	if (s->is_valid && s->type == LCUI_STYPE_STYLE &&
+	    s->val_style == SV_NONE) {
+		Widget_UnsetStyle(w, key_display);
+	} else if (!w->computed_style.visible) {
+		s = Widget_GetInheritedStyle(w, key_display);
+		if (s->is_valid && s->type == LCUI_STYPE_STYLE &&
+		    s->val_style != SV_NONE) {
+			Widget_SetStyle(w, key_display, s->val_style, style);
+		} else {
+			Widget_SetStyle(w, key_display, SV_BLOCK, style);
+		}
+	}
 	Widget_UpdateStyle(w, FALSE);
 }
 
 void Widget_Hide(LCUI_Widget w)
 {
-	Widget_SetStyle(w, key_visible, FALSE, bool);
+	Widget_SetStyle(w, key_display, SV_NONE, style);
 	Widget_UpdateStyle(w, FALSE);
 }
 
@@ -118,18 +166,14 @@ void Widget_SetPosition(LCUI_Widget w, LCUI_StyleValue position)
 	Widget_UpdateStyle(w, FALSE);
 }
 
+void Widget_SetOpacity(LCUI_Widget w, float opacity)
+{
+	Widget_SetStyle(w, key_opacity, opacity, scale);
+	Widget_UpdateStyle(w, FALSE);
+}
+
 void Widget_SetBoxSizing(LCUI_Widget w, LCUI_StyleValue sizing)
 {
 	Widget_SetStyle(w, key_box_sizing, sizing, style);
 	Widget_UpdateStyle(w, FALSE);
-}
-
-void Widget_SetDisabled(LCUI_Widget w, LCUI_BOOL disabled)
-{
-	w->disabled = disabled;
-	if (w->disabled) {
-		Widget_AddStatus(w, "disabled");
-	} else {
-		Widget_RemoveStatus(w, "disabled");
-	}
 }

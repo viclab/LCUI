@@ -25,8 +25,6 @@
 - [构建](#构建)
 - [社区](#社区)
 - [贡献](#贡献)
-- [支持者](#支持者)
-- [赞助商](#赞助商)
 
 ## 介绍
 
@@ -51,20 +49,19 @@ LCUI 是一个个人项目，其主要用途是方便作者能够开发简单的
 
 - 没有硬件加速，图形渲染效率低下。
 - 不支持选中和复制界面中的文本。
-- 不支持实用 CTRL+C 复制内容，不支持使用 CTRL+V 粘贴内容到输入框。
+- 不支持使用 CTRL+C 复制内容，不支持使用 CTRL+V 粘贴内容到输入框。
 - 不支持使用输入法输入非英文字符，例如：中文，日文，等。
 - 当前版本并不支持渲染圆角边框。
 - 布局系统简单，不支持网格、表格等布局。
 
 如果你有上述问题的相关解决经验，可以通过提交问题（Issue）或拉取请求（Pull Request）来向作者提供技术支持。
 
-### 效果图
+### 相关项目
 
-![Hello, World!](https://lcui.lc-soft.io/static/images/screenshot-lcui-hello.png)
+想要了解 LCUI 具体能做什么？你可以查看以下项目：
 
-[![LCUI.css](https://lcui.lc-soft.io/static/images/screenshot-lcui-css.gif)](https://github.com/lc-ui/LCUI.css)
-
-[![LCFinder](https://lcui.lc-soft.io/static/images/screenshot-lcfinder.png)](https://github.com/lc-soft/LC-Finder)
+- [LCUI.css](https://github.com/lc-ui/lcui.css) - LCUI 组件库，包含了一些通用组件和 css 样式。
+- [LCFinder](https://github.com/lc-soft/LC-Finder) - 图片管理器，LCUI 的旗舰级应用程序，你可以将它作为参考对象，以此评估 LCUI 的性能、界面效果和开发复杂度是否符合你的需求。
 
 ## 许可
 
@@ -78,6 +75,20 @@ LCUI 采用的开源许可证是 [MIT](http://opensource.org/licenses/MIT)。
 目前还没有 API 参考文档，你可以参考头文件、源代码、示例程序以及作者开发过的相关程序来了解基本用法。
 
 ## 构建
+
+### 依赖项
+
+如果你想构建全特性的 LCUI，建议安装以下依赖库：
+
+- [libpng](http://www.libpng.org/pub/png/libpng.html) — PNG 图像压缩库
+- [libjpeg](http://www.ijg.org/) — JPEG 图像压缩库
+- [libxml2](http://xmlsoft.org/) — XML 解析器及相关工具集
+- [libx11](https://www.x.org/) — X11 客户端库
+- [freetype](https://www.freetype.org/) — 字体渲染引擎
+
+如果你的系统是 Ubuntu，可运行以下命令来安装依赖：
+
+    apt-get install libpng-dev libjpeg-dev libxml2-dev libfreetype6-dev libx11-dev
 
 ### 引导
 
@@ -107,25 +118,15 @@ LCUI 采用的开源许可证是 [MIT](http://opensource.org/licenses/MIT)。
 
     ./helloworld
 
-### 依赖项
-
-如果你想构建全特性的 LCUI，建议安装以下依赖库：
-
-- [libpng](http://www.libpng.org/pub/png/libpng.html) — PNG 图像压缩库
-- [libjpeg](http://www.ijg.org/) — JPEG 图像压缩库
-- [libxml2](http://xmlsoft.org/) — XML 解析器及相关工具集
-- [libx11](https://www.x.org/) — X11 客户端库
-- [freetype](https://www.freetype.org/) — 字体渲染引擎
-
-如果你的系统是 Ubuntu，可运行以下命令来安装依赖：
-
-    apt-get install libpng-dev libjpeg-dev libxml2-dev libfreetype6-dev libx11-dev
-
 ### 在 Windows 中构建
 
-LCUI 主要是在 Windows 系统环境下开发的，你可以使用 VisualStudio 打开 `/build/windows/LCUI.sln` 文件，然后编译生成 LCUI。如果你用的是其它 IDE，请尝试按该 IDE 的方式创建项目并将源文件添加至项目内，然后编译。
+LCUI 主要是在 Windows 系统环境下开发的，目前只提供 Visual Studio 的解决方案文件（.sln）,你可以使用 [Visual Studio](https://visualstudio.microsoft.com/) 打开 `/build/windows/LCUI.sln` 文件，然后编译生成 LCUI。如果你用的是其它 IDE，请尝试按该 IDE 的方式创建项目并将源文件添加至项目内，然后编译。
 
-上述的依赖库中除 Windows 系统用不到的 libx11 库外，都可以在 Windows 系统环境下编译生成，具体的编译方法你可以在教程中找到。如果你觉得编译这些依赖库很麻烦，可以试试用 [vcpkg](https://github.com/Microsoft/vcpkg) 来安装它们，而[发行版](https://github.com/lc-soft/LCUI/releases)的附件列表中一般也会有一个包含所有依赖库的压缩包可供使用。
+上述的依赖库中除 Windows 系统用不到的 libx11 库外，都可以在 Windows 系统环境下编译生成，具体的编译方法你可以在教程中找到。如果你觉得编译这些依赖库很麻烦，可以使用 [vcpkg](https://github.com/Microsoft/vcpkg) 来安装它们，只需在命令行里输入如下命令：
+
+    ./vcpkg install freetype libxml2 libjpeg-turbo libpng
+
+[发行版](https://github.com/lc-soft/LCUI/releases)的附件列表中一般也会有一个包含所有依赖库的压缩包可供使用。
 
 ## 社区
 
@@ -154,73 +155,3 @@ LCUI 还有很多需要完善的地方，相信有经验的人很容易就能发
 由于 LCUI 是一个与作者职业无关的项目，在此项目上投入过多时间对于作者的意义并不大，因此受限于时间成本问题，像图形渲染优化、输入法支持、文档撰写、琐碎小功能等这类耗时长、收益低的工作，现阶段都不会安排在主线分支上。除去这里简单说明的一些待改进的地方外，在 LCUI 的源代码中也会有一些被 FIXME 注释标记的待改进的代码，通常这些注释还会说明为什么改进它，以及怎么改进它，如果你感兴趣，可以留意源代码中的 FIXME 注释内容，或者直接搜索 FIXME 注释。
 
 本项目是以技术交流为主要目的而开放源代码的，如果你有相关问题解决经验，可以向此项目提供支持，与其他人分享你的经验，但在参与贡献之前，请先阅读[这篇贡献指南](CONTRIBUTING.md)。
-
-## 支持者
-
-每月捐赠支持该项目的持续发展。 [[成为支持者](https://opencollective.com/lcui#backer)]
-
-<a href="https://opencollective.com/lcui/backer/0/website" target="_blank"><img src="https://opencollective.com/lcui/backer/0/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/1/website" target="_blank"><img src="https://opencollective.com/lcui/backer/1/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/2/website" target="_blank"><img src="https://opencollective.com/lcui/backer/2/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/3/website" target="_blank"><img src="https://opencollective.com/lcui/backer/3/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/4/website" target="_blank"><img src="https://opencollective.com/lcui/backer/4/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/5/website" target="_blank"><img src="https://opencollective.com/lcui/backer/5/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/6/website" target="_blank"><img src="https://opencollective.com/lcui/backer/6/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/7/website" target="_blank"><img src="https://opencollective.com/lcui/backer/7/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/8/website" target="_blank"><img src="https://opencollective.com/lcui/backer/8/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/9/website" target="_blank"><img src="https://opencollective.com/lcui/backer/9/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/10/website" target="_blank"><img src="https://opencollective.com/lcui/backer/10/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/11/website" target="_blank"><img src="https://opencollective.com/lcui/backer/11/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/12/website" target="_blank"><img src="https://opencollective.com/lcui/backer/12/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/13/website" target="_blank"><img src="https://opencollective.com/lcui/backer/13/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/14/website" target="_blank"><img src="https://opencollective.com/lcui/backer/14/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/15/website" target="_blank"><img src="https://opencollective.com/lcui/backer/15/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/16/website" target="_blank"><img src="https://opencollective.com/lcui/backer/16/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/17/website" target="_blank"><img src="https://opencollective.com/lcui/backer/17/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/18/website" target="_blank"><img src="https://opencollective.com/lcui/backer/18/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/19/website" target="_blank"><img src="https://opencollective.com/lcui/backer/19/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/20/website" target="_blank"><img src="https://opencollective.com/lcui/backer/20/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/21/website" target="_blank"><img src="https://opencollective.com/lcui/backer/21/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/22/website" target="_blank"><img src="https://opencollective.com/lcui/backer/22/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/23/website" target="_blank"><img src="https://opencollective.com/lcui/backer/23/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/24/website" target="_blank"><img src="https://opencollective.com/lcui/backer/24/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/25/website" target="_blank"><img src="https://opencollective.com/lcui/backer/25/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/26/website" target="_blank"><img src="https://opencollective.com/lcui/backer/26/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/27/website" target="_blank"><img src="https://opencollective.com/lcui/backer/27/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/28/website" target="_blank"><img src="https://opencollective.com/lcui/backer/28/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/backer/29/website" target="_blank"><img src="https://opencollective.com/lcui/backer/29/avatar.svg"></a>
-
-## 赞助商
-
-成为赞助商，将你的 LOGO 展示在 README 文档和项目主页里。 [[成为赞助商](https://opencollective.com/lcui#sponsor)]
-
-<a href="https://opencollective.com/lcui/sponsor/0/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/0/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/1/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/1/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/2/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/2/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/3/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/3/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/4/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/4/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/5/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/5/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/6/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/6/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/7/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/7/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/8/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/8/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/9/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/9/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/10/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/10/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/11/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/11/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/12/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/12/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/13/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/13/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/14/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/14/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/15/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/15/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/16/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/16/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/17/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/17/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/18/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/18/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/19/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/19/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/20/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/20/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/21/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/21/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/22/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/22/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/23/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/23/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/24/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/24/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/25/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/25/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/26/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/26/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/27/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/27/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/28/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/28/avatar.svg"></a>
-<a href="https://opencollective.com/lcui/sponsor/29/website" target="_blank"><img src="https://opencollective.com/lcui/sponsor/29/avatar.svg"></a>

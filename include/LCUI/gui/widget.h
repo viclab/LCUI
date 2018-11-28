@@ -34,7 +34,12 @@
 #include <LCUI/graph.h>
 #include <LCUI/thread.h>
 #include <LCUI/gui/widget_base.h>
+#include <LCUI/gui/widget_attribute.h>
+#include <LCUI/gui/widget_id.h>
+#include <LCUI/gui/widget_class.h>
+#include <LCUI/gui/widget_status.h>
 #include <LCUI/gui/widget_helper.h>
+#include <LCUI/gui/widget_tree.h>
 #include <LCUI/gui/widget_layout.h>
 #include <LCUI/gui/widget_task.h>
 #include <LCUI/gui/widget_paint.h>

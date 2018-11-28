@@ -43,34 +43,46 @@
 #include LCUI_EVENTS_H
 
 #ifdef LCUI_VIDEO_DRIVER_X11
+
+static struct LCUI_LinuxIMEModule {
+	int handler_id;
+} self;
+
 static LCUI_BOOL X11IME_ProcessKey(int key, int key_state)
 {
-	return LCUIIME_CheckCharKey(key);
+	return FALSE;
 }
 
 static void X11IME_ToText(int ch)
 {
-	wchar_t text[2];
-	text[0] = ch;
-	text[1] = '\0';
+	wchar_t text[2] = { ch, 0 };
+	LCUIIME_Commit(text, 2);
+}
+
+static void OnKeyPress(LCUI_SysEvent e, void *arg)
+{
+	wchar_t text[2] = { e->key.code, 0 };
+	_DEBUG_MSG("char: %c\n", e->key.code);
 	LCUIIME_Commit(text, 2);
 }
 
 static LCUI_BOOL X11IME_Open(void)
 {
+	self.handler_id = LCUI_BindEvent(LCUI_KEYPRESS, OnKeyPress, NULL, NULL);
 	return TRUE;
 }
 
 static LCUI_BOOL X11IME_Close(void)
 {
+	LCUI_UnbindEvent(self.handler_id);
 	return TRUE;
 }
 #endif
 
 int LCUI_RegisterLinuxIME(void)
 {
-	LCUI_IMEHandlerRec handler;
 #ifdef LCUI_VIDEO_DRIVER_X11
+	LCUI_IMEHandlerRec handler;
 	if (LCUI_GetAppId() == LCUI_APP_LINUX_X11) {
 		handler.prockey = X11IME_ProcessKey;
 		handler.totext = X11IME_ToText;

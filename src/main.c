@@ -26,7 +26,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
+#define LCUI_MAIN_C
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,18 +58,18 @@
 #define STATE_ACTIVE 1
 #define STATE_KILLED 0
 
-/** 一秒内的最大更新帧数 */
-#define MAX_FRAMES_PER_SEC 120
+typedef struct LCUI_MainLoopRec_ {
+	int state;       /**< 主循环的状态 */
+	LCUI_Thread tid; /**< 当前运行该主循环的线程的ID */
+} LCUI_MainLoopRec;
 
 /** 主循环的状态 */
-enum MainLoopState {
-	STATE_PAUSED, STATE_RUNNING, STATE_EXITED
-};
+enum LCUI_MainLoopState { STATE_PAUSED, STATE_RUNNING, STATE_EXITED };
 
 typedef struct SysEventHandlerRec_ {
 	LCUI_SysEventFunc func;
 	void *data;
-	void(*destroy_data)(void *);
+	void (*destroy_data)(void *);
 } SysEventHandlerRec, *SysEventHandler;
 
 typedef struct SysEventPackRec_ {
@@ -84,7 +84,7 @@ static struct LCUI_System {
 	int state;				/**< 状态 */
 	int mode;				/**< LCUI的运行模式 */
 	int exit_code;				/**< 退出码 */
-	unsigned long int main_tid;		/**< 主线程ID */
+	LCUI_Thread thread;			/**< 主线程 */
 	struct {
 		LCUI_EventTrigger trigger;	/**< 系统事件容器 */
 		LCUI_Mutex mutex;		/**< 互斥锁 */
@@ -110,7 +110,76 @@ static struct LCUI_App {
 
 /* clang-format on */
 
-/*-------------------------- system event <START> ---------------------------*/
+#ifdef DEBUG
+
+enum LCUI_StatsTarget {
+	LCUI_STATS_EVENTS,
+	LCUI_STATS_LAYOUT,
+	LCUI_STATS_RENDER,
+	LCUI_STATS_PRESENT
+};
+
+typedef struct LCUI_StatsRec_ {
+	size_t frame;
+	int64_t start_time;
+	uint32_t total_time;
+	size_t render_count;
+	union {
+		uint32_t time_list[4];
+		struct {
+			uint32_t events_time;
+			uint32_t layout_time;
+			uint32_t render_time;
+			uint32_t present_time;
+		} time;
+	};
+} LCUI_StatsRec, *LCUI_Stats;
+
+void LCUIStats_Begin(LCUI_Stats stats)
+{
+	memset(stats, 0, sizeof(LCUI_StatsRec));
+	stats->start_time = LCUI_GetTime();
+	stats->frame = LCUI_GetFrameCount();
+}
+
+void LCUIStats_RecordTime(LCUI_Stats stats, unsigned num)
+{
+	unsigned i;
+	uint32_t delta;
+
+	delta = (uint32_t)LCUI_GetTimeDelta(stats->start_time);
+	for (i = 0; i < num && i < 4; ++i) {
+		if (delta > stats->time_list[i]) {
+			delta -= stats->time_list[i];
+		} else {
+			delta = 0;
+			break;
+		}
+	}
+	stats->time_list[num] = delta;
+}
+
+void LCUIStats_Print(LCUI_Stats stats)
+{
+	LOG("[stats] total time: %ums, events time: %ums, "
+	    "layout time: %ums, render time: %ums, render count: %lu, "
+	    "present time: %ums\n",
+	    stats->total_time, stats->time.events_time, stats->time.layout_time,
+	    stats->time.render_time, stats->render_count,
+	    stats->time.present_time);
+}
+
+void LCUIStats_End(LCUI_Stats stats)
+{
+	stats->total_time = (uint32_t)LCUI_GetTimeDelta(stats->start_time);
+	if (stats->total_time > 100) {
+		LOG("[stats] \e[1;33mwarning:\e[0m current frame takes "
+		    "too long\n");
+		LCUIStats_Print(stats);
+	}
+}
+
+#endif
 
 static void LCUI_InitEvent(void)
 {
@@ -145,7 +214,7 @@ static void DestroySysEventHandler(void *arg)
 }
 
 int LCUI_BindEvent(int id, LCUI_SysEventFunc func, void *data,
-		   void(*destroy_data)(void *))
+		   void (*destroy_data)(void *))
 {
 	int ret;
 	SysEventHandler handler;
@@ -222,8 +291,6 @@ void LCUI_DestroyEvent(LCUI_SysEvent e)
 	e->type = LCUI_NONE;
 }
 
-/*--------------------------- system event <END> ----------------------------*/
-
 void LCUI_ProcessEvents(void)
 {
 	if (MainApp.driver_ready) {
@@ -282,6 +349,9 @@ LCUI_MainLoop LCUIMainLoop_New(void)
 /** 运行目标主循环 */
 int LCUIMainLoop_Run(LCUI_MainLoop loop)
 {
+#ifdef DEBUG
+	LCUI_StatsRec stats;
+#endif
 	LCUI_BOOL at_same_thread = FALSE;
 	if (loop->state == STATE_RUNNING) {
 		DEBUG_MSG("error: main-loop already running.\n");
@@ -303,6 +373,20 @@ int LCUIMainLoop_Run(LCUI_MainLoop loop)
 	DEBUG_MSG("loop: %p, enter\n", loop);
 	MainApp.loop = loop;
 	while (loop->state != STATE_EXITED) {
+#ifdef DEBUG
+		LCUIStats_Begin(&stats);
+		LCUI_ProcessTimers();
+		LCUI_ProcessEvents();
+		LCUIStats_RecordTime(&stats, LCUI_STATS_EVENTS);
+		LCUIDisplay_Update();
+		LCUIStats_RecordTime(&stats, LCUI_STATS_LAYOUT);
+		stats.render_count = LCUIDisplay_Render();
+		LCUIStats_RecordTime(&stats, LCUI_STATS_RENDER);
+		LCUIDisplay_Present();
+		LCUIStats_RecordTime(&stats, LCUI_STATS_PRESENT);
+		LCUIStats_End(&stats);
+#endif
+		LCUI_ProcessTimers();
 		LCUI_ProcessEvents();
 		LCUIDisplay_Update();
 		LCUIDisplay_Render();
@@ -358,7 +442,7 @@ void LCUI_InitApp(LCUI_AppDriver app)
 		MainApp.workers[i] = LCUIWorker_New();
 		LCUIWorker_RunAsync(MainApp.workers[i]);
 	}
-	StepTimer_SetFrameLimit(MainApp.timer, MAX_FRAMES_PER_SEC);
+	StepTimer_SetFrameLimit(MainApp.timer, LCUI_MAX_FRAMES_PER_SEC);
 	if (!app) {
 		app = LCUI_CreateAppDriver();
 		if (!app) {
@@ -411,7 +495,7 @@ static void LCUI_FreeApp(void)
 }
 
 int LCUI_BindSysEvent(int event_id, LCUI_EventFunc func, void *data,
-		      void(*destroy_data)(void *))
+		      void (*destroy_data)(void *))
 {
 	if (MainApp.driver_ready) {
 		return MainApp.driver->BindSysEvent(event_id, func, data,
@@ -450,7 +534,7 @@ static void LCUIApp_QuitAllMainLoop(void)
 
 static void LCUI_ShowCopyrightText(void)
 {
-	Logger_Log("LCUI (LC's UI) version " LCUI_VERSION "\n"
+	Logger_Log("LCUI (LC's UI) version " PACKAGE_VERSION "\n"
 #ifdef _MSC_VER
 		   "Build tool: "
 #if (_MSC_VER > 1912)
@@ -502,7 +586,7 @@ void LCUI_InitBase(void)
 	}
 	System.exit_code = 0;
 	System.state = STATE_ACTIVE;
-	System.main_tid = LCUIThread_SelfID();
+	System.thread = LCUIThread_SelfID();
 	LCUI_ShowCopyrightText();
 	LCUI_InitEvent();
 	LCUI_InitFontLibrary();
@@ -521,6 +605,16 @@ void LCUI_Init(void)
 	LCUI_InitKeyboard();
 	LCUI_InitCursor();
 	LCUI_InitIME();
+
+	switch (LCUI_GetAppId()) {
+	case LCUI_APP_LINUX_X11:
+	case LCUI_APP_UWP:
+	case LCUI_APP_WINDOWS:
+		LCUICursor_Hide();
+		break;
+	default:
+		break;
+	}
 }
 
 int LCUI_Destroy(void)
@@ -562,9 +656,4 @@ int LCUI_Main(void)
 	loop = LCUIMainLoop_New();
 	LCUIMainLoop_Run(loop);
 	return LCUI_Destroy();
-}
-
-int LCUI_GetSelfVersion(char *out)
-{
-	return sprintf(out, "%s", LCUI_VERSION);
 }

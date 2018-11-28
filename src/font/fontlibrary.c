@@ -33,11 +33,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <LCUI_Build.h>
-#include <LCUI/LCUI.h>
+#include <LCUI/types.h>
+#include <LCUI/util.h>
 #include <LCUI/graph.h>
 #include <LCUI/font.h>
 
- /* clang-format off */
+/* clang-format off */
 
 #define FONT_CACHE_SIZE		32
 #define FONT_CACHE_MAX_SIZE	1024
@@ -89,7 +90,7 @@ static struct LCUI_FontLibraryModule {
 
 /* clang-format on */
 
-#define FontBitmap_IsValid(fbmp) (fbmp && fbmp->width > 0 && fbmp->rows > 0)
+#define FontBitmap_IsValid(fbmp) ((fbmp) && (fbmp)->width > 0 && (fbmp)->rows > 0)
 #define SelectChar(ch) (RBTree *)RBTree_GetData(&fontlib.bitmap_cache, ch)
 #define SelectFont(ch, font_id) (RBTree *)RBTree_GetData(ch, font_id)
 #define SelectBitmap(font, size) (LCUI_FontBitmap *)RBTree_GetData(font, size)
@@ -135,7 +136,7 @@ static LCUI_Font GetFontCache(int id)
 		return NULL;
 	}
 	return fontlib.font_cache[id / FONT_CACHE_SIZE]
-		->fonts[id % FONT_CACHE_SIZE];
+	    ->fonts[id % FONT_CACHE_SIZE];
 }
 
 static int SetFontCache(LCUI_Font font)
@@ -163,7 +164,7 @@ static int SetFontCache(LCUI_Font font)
 		fontlib.font_cache = caches;
 	}
 	fontlib.font_cache[font->id / FONT_CACHE_SIZE]
-		->fonts[font->id % FONT_CACHE_SIZE] = font;
+	    ->fonts[font->id % FONT_CACHE_SIZE] = font;
 	return 0;
 }
 
@@ -309,8 +310,7 @@ size_t LCUIFont_UpdateWeight(const int *font_ids, LCUI_FontWeight weight,
 	if (!font_ids) {
 		return 0;
 	}
-	for (len = 0; font_ids[len]; ++len)
-		;
+	for (len = 0; font_ids[len]; ++len);
 	if (len < 1) {
 		return 0;
 	}
@@ -838,41 +838,9 @@ int LCUIFont_RenderBitmap(LCUI_FontBitmap *buff, wchar_t ch, int font_id,
 	return font->engine->render(buff, ch, pixel_size, font);
 }
 
-void LCUI_InitFontLibrary(void)
+static void LCUIFont_InitBase(void)
 {
-	int i, fid;
-#ifdef LCUI_BUILD_IN_WIN32
-#define FONTDIR "C:/Windows/Fonts/"
-#define MAX_FONTFILE_NUM 4
-	struct {
-		const char *path;
-		const char *family;
-		const char *style;
-	} fonts[MAX_FONTFILE_NUM] = {
-		{ FONTDIR "consola.ttf", "Consola", NULL },
-		{ FONTDIR "simsun.ttc", "SimSun", NULL },
-		{ FONTDIR "msyh.ttf", "Microsoft YaHei", NULL },
-		{ FONTDIR "msyh.ttc", "Microsoft YaHei", NULL }
-	};
-#else
-#define FONTDIR "/usr/share/fonts/"
-#define MAX_FONTFILE_NUM 4
-	struct {
-		const char *path;
-		const char *family;
-		const char *style;
-	} fonts[MAX_FONTFILE_NUM] = {
-		{ FONTDIR "truetype/ubuntu-font-family/Ubuntu-R.ttf", "Ubuntu",
-		NULL },
-		{ FONTDIR "opentype/noto/NotoSansCJK-Regular.ttc",
-		"Noto Sans CJK SC", NULL },
-		{ FONTDIR "opentype/noto/NotoSansCJK.ttc", "Noto Sans CJK SC",
-		NULL },
-		{ FONTDIR "truetype/wqy/wqy-microhei.ttc",
-		"WenQuanYi Micro Hei", NULL }
-	};
-#endif
-
+	fontlib.count = 0;
 	fontlib.font_cache_num = 1;
 	fontlib.font_cache = NEW(LCUI_FontCache, 1);
 	fontlib.font_cache[0] = FontCache();
@@ -882,7 +850,11 @@ void LCUI_InitFontLibrary(void)
 	fontlib.font_families = Dict_Create(&fontlib.font_families_type, NULL);
 	RBTree_OnDestroy(&fontlib.bitmap_cache, DestroyTreeNode);
 	fontlib.active = TRUE;
+}
 
+static void LCUIFont_InitEngine(void)
+{
+	int fid;
 	/* 先初始化内置的字体引擎 */
 	fontlib.engine = &fontlib.engines[0];
 	LCUIFont_InitInCoreFont(fontlib.engine);
@@ -902,19 +874,9 @@ void LCUI_InitFontLibrary(void)
 	} else {
 		LOG("[font] warning: not font engine support!\n");
 	}
-	for (i = 0; i < MAX_FONTFILE_NUM; ++i) {
-		LCUIFont_LoadFile(fonts[i].path);
-	}
-	for (i = MAX_FONTFILE_NUM - 1; i >= 0; --i) {
-		fid = LCUIFont_GetId(fonts[i].family, 0, 0);
-		if (fid > 0) {
-			LCUIFont_SetDefault(fid);
-			break;
-		}
-	}
 }
 
-void LCUI_FreeFontLibrary(void)
+static void LCUIFont_FreeBase(void)
 {
 	if (!fontlib.active) {
 		return;
@@ -928,8 +890,120 @@ void LCUI_FreeFontLibrary(void)
 	RBTree_Destroy(&fontlib.bitmap_cache);
 	free(fontlib.font_cache);
 	fontlib.font_cache = NULL;
+}
+
+static void LCUIFont_FreeEngine(void)
+{
 	LCUIFont_ExitInCoreFont();
 #ifdef LCUI_FONT_ENGINE_FREETYPE
 	LCUIFont_ExitFreeType();
 #endif
+}
+
+#ifdef LCUI_BUILD_IN_WIN32
+static void LCUIFont_LoadFontsForWindows(void)
+{
+	size_t i;
+	int *ids = NULL;
+	const char *names = "Consola, Simsun, Microsoft YaHei";
+	const char *fonts[] = { "C:/Windows/Fonts/consola.ttf",
+				"C:/Windows/Fonts/simsun.ttc",
+				"C:/Windows/Fonts/msyh.ttf",
+				"C:/Windows/Fonts/msyh.ttc" };
+
+	for (i = 0; i < sizeof(fonts) / sizeof(char *); ++i) {
+		LCUIFont_LoadFile(fonts[i]);
+	}
+	i = LCUIFont_GetIdByNames(&ids, FONT_STYLE_NORMAL, FONT_WEIGHT_NORMAL,
+				  names);
+	if (i > 0) {
+		LCUIFont_SetDefault(ids[i - 1]);
+	}
+	free(ids);
+}
+
+#else
+
+#ifdef USE_FONTCONFIG
+
+static void LCUIFont_LoadFontsByFontConfig(void)
+{
+	size_t i;
+	char *path;
+	int *ids = NULL;
+	const char *names = "Noto Sans CJK, Ubuntu, WenQuanYi Micro Hei";
+	const char *fonts[] = { "Ubuntu", "Noto Sans CJK SC",
+				"WenQuanYi Micro Hei" };
+
+	for (i = 0; i < sizeof(fonts) / sizeof(char *); ++i) {
+		path = Fontconfig_GetPath(fonts[i]);
+		LCUIFont_LoadFile(path);
+		free(path);
+	}
+	i = LCUIFont_GetIdByNames(&ids, FONT_STYLE_NORMAL, FONT_WEIGHT_NORMAL,
+				  names);
+	if (i > 0) {
+		LCUIFont_SetDefault(ids[i - 1]);
+	}
+	free(ids);
+}
+
+#else
+
+static void LCUIFont_LoadFontsForLinux(void)
+{
+	size_t i;
+	int *ids = NULL;
+	const char *names = "Noto Sans CJK SC, Ubuntu, WenQuanYi Micro Hei";
+	const char *fonts[] = {
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-R.ttf",
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-RI.ttf",
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-B.ttf",
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-BI.ttf",
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-M.ttf",
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-MI.ttf",
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-L.ttf",
+		"/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-LI.ttf",
+		"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+		"/usr/share/fonts/opentype/noto/NotoSansCJK.ttc",
+		"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
+	};
+
+	for (i = 0; i < sizeof(fonts) / sizeof(char *); ++i) {
+		LCUIFont_LoadFile(fonts[i]);
+	}
+	i = LCUIFont_GetIdByNames(&ids, FONT_STYLE_NORMAL, FONT_WEIGHT_NORMAL,
+				  names);
+	if (i > 0) {
+		LCUIFont_SetDefault(ids[i - 1]);
+	}
+	free(ids);
+}
+#endif
+
+#endif
+
+static void LCUIFont_LoadDefaultFonts(void)
+{
+#ifdef LCUI_BUILD_IN_WIN32
+	LCUIFont_LoadFontsForWindows();
+#elif defined(USE_FONTCONFIG)
+	LOG("[font] fontconfig enabled\n");
+	LCUIFont_LoadFontsByFontConfig();
+#else
+	LCUIFont_LoadFontsForLinux();
+#endif
+}
+
+void LCUI_InitFontLibrary(void)
+{
+	LCUIFont_InitBase();
+	LCUIFont_InitEngine();
+	LCUIFont_LoadDefaultFonts();
+}
+
+void LCUI_FreeFontLibrary(void)
+{
+	LCUIFont_FreeBase();
+	LCUIFont_FreeEngine();
 }

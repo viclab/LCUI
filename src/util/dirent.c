@@ -34,26 +34,30 @@
 #include <LCUI/LCUI.h>
 #include <LCUI/font/charset.h>
 
-int LCUI_OpenDirA(const char *filepath, LCUI_Dir *dir)
+int LCUI_OpenDirA(const char *path, LCUI_Dir *dir)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
-	int len;
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
+	size_t len;
 	char *newpath;
+	char name[] = "\\*";
 
-	len = strlen(filepath) + 5;
-	newpath = malloc(len * sizeof(char));
+	len = strlen(path) + 1;
+	newpath = malloc(len * sizeof(char) + sizeof(name));
 	if (newpath == NULL) {
 		return -ENOMEM;
 	}
-	/* 需要加上通配符 */
-	sprintf_s(newpath, len, "%s\\*", filepath);
+	strcpy(newpath, path);
+	strcpy(newpath + len - 1, name);
 	dir->handle = FindFirstFileA(newpath, &dir->entry.dataA);
 	free(newpath);
 	if (dir->handle == INVALID_HANDLE_VALUE) {
 		switch (GetLastError()) {
-		case ERROR_FILE_NOT_FOUND: return -ENOENT;
-		case ERROR_ACCESS_DENIED: return -EACCES;
-		default: break;
+		case ERROR_FILE_NOT_FOUND:
+			return -ENOENT;
+		case ERROR_ACCESS_DENIED:
+			return -EACCES;
+		default:
+			break;
 		}
 		return -1;
 	}
@@ -64,23 +68,29 @@ int LCUI_OpenDirA(const char *filepath, LCUI_Dir *dir)
 
 int LCUI_OpenDirW(const wchar_t *path, LCUI_Dir *dir)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
-	int len;
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
+	size_t len;
 	wchar_t *newpath;
+	wchar_t name[] = L"\\*";
+	
 
-	len = wcslen(path) + 5;
-	newpath = malloc(len * sizeof(wchar_t));
+	len = wcslen(path) + 1;
+	newpath = malloc(len * sizeof(wchar_t) + sizeof(name));
 	if (!newpath) {
 		return -ENOMEM;
 	}
-	swprintf(newpath, len, L"%s\\*", path);
+	wcscpy(newpath, path);
+	wcscpy(newpath + len - 1, name);
 	dir->handle = FindFirstFileW(newpath, &dir->entry.dataW);
 	free(newpath);
 	if (dir->handle == INVALID_HANDLE_VALUE) {
 		switch (GetLastError()) {
-		case ERROR_FILE_NOT_FOUND: return -ENOENT;
-		case ERROR_ACCESS_DENIED: return -EACCES;
-		default: break;
+		case ERROR_FILE_NOT_FOUND:
+			return -ENOENT;
+		case ERROR_ACCESS_DENIED:
+			return -EACCES;
+		default:
+			break;
 		}
 		return -1;
 	}
@@ -101,9 +111,9 @@ int LCUI_OpenDirW(const wchar_t *path, LCUI_Dir *dir)
 	return 0;
 }
 
-LCUI_DirEntry* LCUI_ReadDirA(LCUI_Dir *dir)
+LCUI_DirEntry *LCUI_ReadDirA(LCUI_Dir *dir)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
 	if (dir->handle == INVALID_HANDLE_VALUE) {
 		return NULL;
 	}
@@ -120,9 +130,9 @@ LCUI_DirEntry* LCUI_ReadDirA(LCUI_Dir *dir)
 	return NULL;
 }
 
-LCUI_DirEntry* LCUI_ReadDirW(LCUI_Dir *dir)
+LCUI_DirEntry *LCUI_ReadDirW(LCUI_Dir *dir)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
 	if (dir->handle == INVALID_HANDLE_VALUE) {
 		return NULL;
 	}
@@ -137,20 +147,23 @@ LCUI_DirEntry* LCUI_ReadDirW(LCUI_Dir *dir)
 	dir->handle = INVALID_HANDLE_VALUE;
 	return NULL;
 #else
+	int len;
 	struct dirent *d;
 	d = readdir(dir->handle);
 	if (!d) {
 		return NULL;
 	}
 	dir->entry.dirent = *d;
-	LCUI_DecodeString(dir->entry.name, d->d_name, 0, ENCODING_UTF8);
+	len = LCUI_DecodeString(dir->entry.name, d->d_name,
+				LCUI_DIRENT_NAME_LEN, ENCODING_UTF8);
+	dir->entry.name[len] = 0;
 	return &dir->entry;
 #endif
 }
 
 int LCUI_CloseDir(LCUI_Dir *dir)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
 	if (!FindClose(dir->handle)) {
 		return -1;
 	}
@@ -162,7 +175,7 @@ int LCUI_CloseDir(LCUI_Dir *dir)
 
 char *LCUI_GetFileNameA(LCUI_DirEntry *entry)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
 	return entry->dataA.cFileName;
 #endif
 	return NULL;
@@ -170,7 +183,7 @@ char *LCUI_GetFileNameA(LCUI_DirEntry *entry)
 
 wchar_t *LCUI_GetFileNameW(LCUI_DirEntry *entry)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
 	return entry->dataW.cFileName;
 #else
 	return entry->name;
@@ -180,7 +193,7 @@ wchar_t *LCUI_GetFileNameW(LCUI_DirEntry *entry)
 
 int LCUI_FileIsDirectory(LCUI_DirEntry *entry)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
 	return entry->dataW.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
 #else
 	return entry->dirent.d_type == DT_DIR;
@@ -189,7 +202,7 @@ int LCUI_FileIsDirectory(LCUI_DirEntry *entry)
 
 int LCUI_FileIsRegular(LCUI_DirEntry *entry)
 {
-#if defined (LCUI_BUILD_IN_WIN32) || (_WIN32)
+#if defined(LCUI_BUILD_IN_WIN32) || (_WIN32)
 	return !(entry->dataW.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 #else
 	return entry->dirent.d_type == DT_REG;

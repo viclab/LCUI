@@ -56,10 +56,12 @@ void LCUI_InitWidget(void)
 	LCUIWidget_AddTextCaret();
 	LCUIWidget_AddTextEdit();
 	LCUIWidget_InitBase();
+	LCUIWidget_InitIdLibrary();
 }
 
 void LCUI_FreeWidget(void)
 {
+	LCUIWidget_FreeTextView();
 	LCUIWidget_FreeTasks();
 	LCUIWidget_FreeRoot();
 	LCUIWidget_FreeEvent();
@@ -67,5 +69,6 @@ void LCUI_FreeWidget(void)
 	LCUIWidget_FreePrototype();
 	LCUIWidget_FreeRenderer();
 	LCUIWidget_FreeImageLoader();
+	LCUIWidget_FreeIdLibrary();
 	LCUIWidget_FreeBase();
 }
